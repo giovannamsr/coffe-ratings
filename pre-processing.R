@@ -1,14 +1,15 @@
 # Load libraries
 library(tidyverse)
 library(ggplot2)
-library(dplyr)
 
 # Get the Data
 dados <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-07-07/coffee_ratings.csv')
 
 # Remove columns
 dados <- subset(dados, select = - c(owner, farm_name, lot_number, mill, 
-                                    ico_number, company, producer, owner_1))
+                                    ico_number, company, producer, owner_1,
+                                    number_of_bags, bag_weight, in_country_partner,
+                                    certification_address, certification_contact))
 
 # Detail columns
 detail <- dados  %>%
@@ -28,12 +29,36 @@ detail <- dados  %>%
 # Handling nulls
 
 #altitude_mean_meters é a média das colunas altitude_low_meters e altitude_high_meters.
+#primeiro passo: padronizar unidade de medida (ft e m)
+dados <- dados %>%
+  mutate(altitude_mean_meters = ifelse(unit_of_measurement == "ft" & !is.na(altitude_mean_meters),
+                                       altitude_mean_meters * 3.28,
+                                       altitude_mean_meters))
+dados <- dados %>%
+  mutate(altitude_low_meters = ifelse(unit_of_measurement == "ft" & !is.na(altitude_low_meters),
+                                      altitude_low_meters * 3.28,
+                                      altitude_low_meters))
+dados <- dados %>%
+  mutate(altitude_high_meters = ifelse(unit_of_measurement == "ft" & !is.na(altitude_high_meters),
+                                       altitude_high_meters * 3.28,
+                                       altitude_high_meters))
+#remove coluna com unidade de medida
+dados <- subset(dados, select = -unit_of_measurement)
+
 # Boxplot para verificar outliers
 boxplot(dados$altitude_mean_meters,
         names = c('Mean'), 
         col = c('blue'),  
         main = 'Boxplot', 
-        ylab = 'Altitude (meters)')     
+        ylab = 'Altitude (meters)')  
+
+dados[order(-dados$altitude_mean_meters), , drop = FALSE] %>%
+  subset(select = c(altitude, 
+                    altitude_low_meters, 
+                    altitude_high_meters, 
+                    altitude_mean_meters,
+                    country_of_origin)) %>%
+  print(n = 10)
 
 # Calcula estatísticas desconsiderando NAs
 estatisticas <- summary(na.omit(dados$altitude_mean_meters))
@@ -103,3 +128,18 @@ table(dados$processing_method) %>% print()
 #decisao: substituir NA por 'Other'
 dados$variety[is.na(dados$variety)] <- "Other"
 dados$processing_method[is.na(dados$processing_method)] <- "Other"
+
+#Há apenas 28 observacoes da espécie robusta
+table(dados$species)
+
+#decisao: retirar observacoes Robusta e fazer a análise só da Arabica
+dados <- subset(dados, species != "Robusta")
+#retira coluna species (mesma informacao na coluna toda)
+dados <- subset(dados, select = -species)
+
+#Transforma grading_date e expiration em data
+#retira sufixos "th", "st", "rd" e "nd"
+dados$grading_date <- gsub("(\\d+)(th|st|rd|nd)", "\\1", dados$grading_date)
+dados$grading_date <- mdy(dados$grading_date)
+dados$expiration <- gsub("(\\d+)(th|st|rd|nd)", "\\1", dados$expiration)
+dados$expiration <- mdy(dados$expiration)
